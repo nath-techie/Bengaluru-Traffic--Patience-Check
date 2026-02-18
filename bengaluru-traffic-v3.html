@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bengaluru Traffic 🏍️</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#F1EADB;overflow:hidden;font-family:'Courier New',monospace}
+#c{display:block;width:100vw;height:100vh}
+#ui{position:fixed;inset:0;pointer-events:none;z-index:10}
+
+
+/* HUD */
+#hud{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:12px;align-items:center}
+.hbox{background:rgba(0,0,0,0.75);border:1px solid rgba(255,170,0,.5);border-radius:7px;padding:5px 14px;
+  color:#ffaa00;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;text-align:center;min-width:95px}
+.hbox b{display:block;font-size:18px;font-weight:900;color:#fff;letter-spacing:1px}
+
+/* Gap window indicator */
+#gap-wrap{position:absolute;top:14px;left:16px;text-align:left}
+#gap-lbl{color:#00ffaa;font-size:10px;letter-spacing:2px;margin-bottom:3px}
+#gap-track{width:130px;height:10px;background:rgba(0,0,0,.5);border:1px solid #00ffaa;border-radius:5px;overflow:hidden}
+#gap-bar{height:100%;background:linear-gradient(90deg,#00cc88,#00ffaa);width:0%;border-radius:5px;transition:width .05s}
+#gap-status{color:#00ffaa;font-size:9px;letter-spacing:1px;margin-top:3px;height:12px}
+
+/* Chaos */
+#chaos-wrap{position:absolute;top:14px;right:16px;text-align:right}
+#chaos-lbl{color:#ff4422;font-size:10px;letter-spacing:2px;margin-bottom:3px}
+#chaos-track{width:110px;height:8px;background:rgba(0,0,0,.5);border:1px solid #ff4422;border-radius:4px;overflow:hidden;margin-left:auto}
+#chaos-fill{height:100%;background:linear-gradient(90deg,#ff9900,#ff2200);width:5%;border-radius:4px;transition:width .4s}
+
+/* Centre message (crash / gap) */
+#msg{position:absolute;top:36%;left:50%;transform:translate(-50%,-50%);
+  font-size:clamp(20px,4vw,44px);font-weight:900;color:#fff;
+  text-shadow:0 0 20px #ff3300,0 0 50px #ff0000;letter-spacing:2px;
+  opacity:0;transition:opacity .12s;white-space:nowrap;text-align:center;pointer-events:none}
+
+/* GAP OPEN flash — green */
+#gap-flash{position:absolute;top:30%;left:50%;transform:translate(-50%,-50%);
+  font-size:clamp(18px,3.5vw,36px);font-weight:900;color:#00ffaa;
+  text-shadow:0 0 20px #00ffaa,0 0 40px #00cc88;letter-spacing:3px;
+  opacity:0;transition:opacity .1s;white-space:nowrap;text-align:center;pointer-events:none}
+
+/* Speedo */
+#speedo{position:absolute;bottom:16px;right:16px}
+
+/* Milestone message */
+#milestone{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-size:clamp(16px,3vw,32px);font-weight:900;color:#00ff88;
+  text-shadow:0 0 20px #00ff88,0 0 40px #00cc66;letter-spacing:2px;
+  opacity:0;transition:opacity .3s;white-space:pre-wrap;text-align:center;
+  pointer-events:none;max-width:90%;line-height:1.5;
+  background:rgba(0,0,0,0.8);padding:20px 30px;border-radius:12px;
+  border:2px solid #00ff88}
+
+/* Hint */
+#hint{position:absolute;bottom:54px;left:50%;transform:translateX(-50%);
+  color:rgba(255,255,255,.25);font-size:10px;letter-spacing:1.2px;white-space:nowrap}
+
+/* Start */
+#start{position:absolute;inset:0;background:rgba(0,0,0,.9);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:20;pointer-events:all;text-align:center;padding:24px}
+#start h1{font-size:clamp(24px,5.5vw,58px);color:#ffaa00;letter-spacing:4px;
+  text-shadow:0 0 40px #ff7700;margin-bottom:6px}
+#start .sub{color:#ff6600;font-size:clamp(10px,2vw,17px);letter-spacing:4px;margin-bottom:26px}
+.tips{color:rgba(255,255,255,.55);font-size:clamp(10px,1.6vw,13px);line-height:2.2;margin-bottom:30px}
+.tips b{color:#ffaa00}.tips i{color:#00ffaa;font-style:normal}
+#go{background:#ffaa00;color:#1a0500;border:none;padding:12px 42px;
+  font-size:clamp(14px,2vw,19px);font-family:'Courier New',monospace;font-weight:900;
+  letter-spacing:3px;border-radius:6px;cursor:pointer;text-transform:uppercase;
+  pointer-events:all;transition:transform .1s,box-shadow .1s}
+#go:hover{transform:scale(1.07);box-shadow:0 0 26px #ffaa00aa}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div id="gap-wrap">
+    <div id="gap-lbl">🟢 GAP WINDOW</div>
+    <div id="gap-track"><div id="gap-bar"></div></div>
+    <div id="gap-status">Waiting...</div>
+
+  </div>
+  <div id="hud">
+    <div class="hbox">Distance<b id="dv">0 m</b></div>
+    <div class="hbox">Speed<b id="sv">0</b></div>
+  </div>
+  <div id="chaos-wrap">
+    <div id="chaos-lbl">🔥 CHAOS</div>
+    <div id="chaos-track"><div id="chaos-fill"></div></div>
+  </div>
+  <div id="msg">Magga, careful! 🤙 nodi</div>
+  <div id="gap-flash">GAP! MOVE NOW! 🏍️Hogu</div>
+  <div id="milestone"></div>
+
+  <div id="hint">← → Weave &nbsp;|&nbsp; ↑ Inch Forward &nbsp;|&nbsp; Wait for GAP to move</div>
+  <div id="speedo"><canvas id="sc" width="88" height="52"></canvas></div>
+</div>
+
+<div id="start">
+  <h1>🏍️ BENGALURU TRAFFIC</h1>
+  <div class="sub">PATIENCE SIMULATOR</div>
+  <div class="tips">
+    This is <b>real</b> Bengaluru traffic — bumper to bumper.<br>
+    You're <b>stuck</b>. Vehicles are <b>everywhere</b>.<br><br>
+    <i>Every ~5 seconds, a GAP opens in traffic.</i><br>
+    That's your only chance to inch forward!<br><br>
+    <b>← →</b> Weave between vehicles<br>
+    <b>↑</b> Inch forward when GAP is open<br>
+    <b>Honk</b> at everything. It won't help. BECAUSE IT'S 9AM 🤌
+  </div>
+  <button id="go" onclick="startGame()">ENTER TRAFFIC 🚦</button>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+// ═══════════════════════════════════════════════════════
+//  CORE STATE
+// ═══════════════════════════════════════════════════════
+let gameActive = false;
+let distance = 0;
+let speed = 0;          // player speed km/h — normally 0, bursts to ~8 when gap open
+let roadOffset = 0;
+let chaos = 0;
+
+// GAP SYSTEM — the heart of the game
+// Every GAP_INTERVAL seconds, gap opens for GAP_DURATION seconds
+const GAP_INTERVAL  = 2.0;   // seconds between gaps
+const GAP_DURATION  = 10.0;   // how long the gap stays open
+let gapTimer        = GAP_INTERVAL; // counts down to next gap
+let gapOpen         = false;
+let gapOpenTimer    = 0;      // counts down while gap is open
+
+// Traffic "wall" position — the nearest vehicles ahead
+let trafficWallZ = -6;        // z position of front wall of traffic (negative = ahead)
+
+let bikeX  = 0;               // lateral position
+let bikeXS = 0;               // smoothed
+const ROAD_HALF  = 3.6;
+const SHIFT_SPD  = 3.5;       // lateral movement — slow, cramped
+
+let shakeT    = 0;
+let crashCD   = 0;
+let honkCD    = 0;
+const keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+  
+
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+
+const MAX_INCH_SPD = 20;       // max km/h when gap opens (very slow crawl)
+const INCH_ACCEL   = 8;
+const BRAKE_DECEL  = 20;
+
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// Touch
+let tx = null, ty = null;
+document.addEventListener('touchstart', e => { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, { passive: true });
+document.addEventListener('touchmove', e => {
+  if (tx === null) return;
+  const dx = e.touches[0].clientX - tx, dy = e.touches[0].clientY - ty;
+  if (Math.abs(dx) > Math.abs(dy)) { keys['ArrowLeft'] = dx < -15; keys['ArrowRight'] = dx > 15; }
+  else { keys['ArrowUp'] = dy < -15; keys['ArrowDown'] = dy > 15; }
+   if (e.code === 'Space' && gameActive) {
+    playHonk();
+  }
+}, { passive: true });
+document.addEventListener('touchend', () => {
+  keys['ArrowLeft'] = keys['ArrowRight'] = keys['ArrowUp'] = keys['ArrowDown'] = false; tx = null;
+});
+
+// ═══════════════════════════════════════════════════════
+//  THREE.JS SETUP
+// ═══════════════════════════════════════════════════════
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x0b0b18); 
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x0b0b18, 18, 55);
+
+const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 140);
+camera.position.set(0, 1.38, 0);
+scene.add(camera);
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+
+// Honk sound system
+function playHonk() {
+  if (honkCD > 0) return; // Cooldown to prevent spam
+  honkCD = 0.5; // 0.5 second cooldown
+  
+  // Create honk sound using Web Audio API
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const oscillator = audioCtx.createOscillator();
+  const gainNode = audioCtx.createGain();
+  
+  oscillator.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  
+  // Honk frequency (typical car horn ~400-500 Hz)
+  oscillator.frequency.setValueAtTime(420, audioCtx.currentTime);
+  oscillator.type = 'square'; // Harsh honk sound
+  
+  // Volume envelope (loud then fade)
+  gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+  
+  oscillator.start(audioCtx.currentTime);
+  oscillator.stop(audioCtx.currentTime + 0.3);
+}
+
+
+// ── LIGHTS ──
+scene.add(new THREE.AmbientLight(0x334466, 0.9));
+const sun = new THREE.DirectionalLight(0xffd080, 0.4);
+sun.position.set(4, 10, 3); scene.add(sun);
+scene.add(new THREE.HemisphereLight(0x224455, 0x1a0800, 0.5));
+// Headlight on camera
+const headL = new THREE.SpotLight(0xfff0bb, 2.8, 30, Math.PI / 9, 0.55, 2);
+headL.position.set(0, 0.4, -0.2);
+headL.target.position.set(0, -1.5, -12);
+camera.add(headL); camera.add(headL.target);
+// Warm ambient (streetlights)
+const warm = new THREE.PointLight(0xff9944, 0.5, 18);
+warm.position.set(0, 3, -6); scene.add(warm);
+
+// ═══════════════════════════════════════════════════════
+//  ROAD TILES — infinite recycle
+// ═══════════════════════════════════════════════════════
+const ROAD_W = 11, TILE_L = 45, NTILES = 8;
+const roadMat   = new THREE.MeshLambertMaterial({ color: 0x2e2e2e });
+const markMat   = new THREE.MeshLambertMaterial({ color: 0xddddaa });
+const markYellow= new THREE.MeshLambertMaterial({ color: 0xffcc00 });
+const holeMat   = new THREE.MeshLambertMaterial({ color: 0x0e0e0e });
+const paveMat   = new THREE.MeshLambertMaterial({ color: 0x3a3428 });
+const kerbMat   = new THREE.MeshLambertMaterial({ color: 0x888877 });
+
+const roadGrp = new THREE.Group(); scene.add(roadGrp);
+const tiles = [];
+
+function buildTileContent(g, zB) {
+  // Road
+  const rm = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_W, TILE_L), roadMat);
+  rm.rotation.x = -Math.PI / 2; rm.position.set(0, 0, zB - TILE_L / 2); g.add(rm);
+  // Pavements + kerbs
+  [-1, 1].forEach(s => {
+    const pv = new THREE.Mesh(new THREE.PlaneGeometry(2.8, TILE_L), paveMat);
+    pv.rotation.x = -Math.PI / 2; pv.position.set(s * (ROAD_W / 2 + 1.4), 0.001, zB - TILE_L / 2); g.add(pv);
+    const kb = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.14, TILE_L), kerbMat);
+    kb.position.set(s * (ROAD_W / 2 + 0.1), 0.07, zB - TILE_L / 2); g.add(kb);
+  });
+  // Centre double-yellow
+  [-0.09, 0.09].forEach(ox => {
+    for (let i = 0; i < 7; i++) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 3.0), markYellow);
+      m.rotation.x = -Math.PI / 2; m.position.set(ox, 0.013, zB - 2 - i * 4); g.add(m);
+    }
+  });
+  // Side dashes — 5 lanes
+  [-ROAD_W / 3, 0, ROAD_W / 3].forEach(x => {   // 3 inner dividers
+    for (let i = 0; i < 5; i++) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.13, 2.4), markMat);
+      m.rotation.x = -Math.PI / 2; m.position.set(x, 0.013, zB - 2.5 - i * 5.5); g.add(m);
+    }
+  });
+  // Potholes
+  const nh = Math.floor(Math.random() * 6) + 3;
+  for (let i = 0; i < nh; i++) {
+    const r = 0.18 + Math.random() * 0.45;
+    const hm = new THREE.Mesh(new THREE.CircleGeometry(r, 9), holeMat);
+    hm.rotation.x = -Math.PI / 2;
+    hm.position.set((Math.random() - 0.5) * ROAD_W * 0.85, 0.022, zB - Math.random() * TILE_L);
+    g.add(hm);
+  }
+}
+
+for (let i = 0; i < NTILES; i++) {
+  const g = new THREE.Group();
+  buildTileContent(g, -i * TILE_L);
+  roadGrp.add(g);
+  tiles.push({ g, zBase: -i * TILE_L });
+}
+
+// ═══════════════════════════════════════════════════════
+//  ENVIRONMENT — buildings, trees, streetlights
+// ═══════════════════════════════════════════════════════
+const envGrp = new THREE.Group(); scene.add(envGrp);
+const envObjs = [];
+
+const SIGN_COLS = [0xff2200, 0x00aaff, 0xffcc00, 0xff6600, 0x22cc44, 0xee2288, 0x00eebb, 0xff4400, 0xaa00ff];
+const BLDG_COLS = [0x3a2e28, 0x2a3040, 0x35302a, 0x283828, 0x2e2830, 0x38302a, 0x302838];
+
+function makeBuilding(side, zPos) {
+  const g = new THREE.Group();
+  const w = 5 + Math.random() * 9, h = 6 + Math.random() * 16, d = 4 + Math.random() * 6;
+  const col = BLDG_COLS[Math.floor(Math.random() * BLDG_COLS.length)];
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshLambertMaterial({ color: col }));
+  body.position.y = h / 2; g.add(body);
+  // Lit windows
+  const winLit  = new THREE.MeshLambertMaterial({ color: 0xffeeaa, emissive: 0xffcc44, emissiveIntensity: 0.35 });
+  const winDark = new THREE.MeshLambertMaterial({ color: 0x111111 });
+  const rows = Math.floor(h / 2.6), cols2 = Math.floor(w / 2.4);
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols2; c++) {
+    const lit = Math.random() > 0.3;
+    const wm = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.65), lit ? winLit : winDark);
+    wm.position.set(-w / 2 + 1.2 + c * 2.4, 1.0 + r * 2.55, d / 2 + 0.02); g.add(wm);
+  }
+  // Shop sign
+  if (Math.random() > 0.25) {
+    const sc2 = SIGN_COLS[Math.floor(Math.random() * SIGN_COLS.length)];
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(w * 0.82, 1.1, 0.18),
+      new THREE.MeshLambertMaterial({ color: sc2, emissive: sc2, emissiveIntensity: 0.5 }));
+    sign.position.set(0, 2.4, d / 2 + 0.1); g.add(sign);
+    // Neon glow point
+    const neon = new THREE.PointLight(sc2, 0.4, 6);
+    neon.position.set(0, 2.4, d / 2 + 0.6); g.add(neon);
+  }
+  const xOff = side * (ROAD_W / 2 + 1.5 + w / 2 + Math.random() * 1.2);
+  g.position.set(xOff, 0, zPos);
+  envGrp.add(g); envObjs.push({ g, zBase: zPos });
+}
+
+function makeTree(side, zPos) {
+  const g = new THREE.Group();
+  const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.2, 2.8, 6),
+    new THREE.MeshLambertMaterial({ color: 0x3d2b1a }));
+  tr.position.y = 1.4; g.add(tr);
+  const leafMat = new THREE.MeshLambertMaterial({ color: Math.random() > 0.5 ? 0x2d5a1e : 0x3a6622 });
+  [[0, 3.6, 0.9], [-0.3, 4.7, 0.65], [0.4, 4.3, 0.72], [0, 5.4, 0.5]].forEach(([ox, oy, r]) => {
+    const lf = new THREE.Mesh(new THREE.SphereGeometry(r, 6, 5), leafMat);
+    lf.position.set(ox, oy, 0); g.add(lf);
+  });
+  g.position.set(side * (ROAD_W / 2 + 0.85 + Math.random() * 0.5), 0, zPos);
+  envGrp.add(g); envObjs.push({ g, zBase: zPos });
+}
+
+function makeStreetlight(side, zPos) {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 7, 6),
+    new THREE.MeshLambertMaterial({ color: 0x777766 }));
+  pole.position.y = 3.5; g.add(pole);
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.0, 5),
+    new THREE.MeshLambertMaterial({ color: 0x777766 }));
+  arm.rotation.z = side * Math.PI / 2; arm.position.set(side * 0.4, 7.1, 0); g.add(arm);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 5),
+    new THREE.MeshLambertMaterial({ color: 0xffeeaa, emissive: 0xffcc44, emissiveIntensity: 1 }));
+  bulb.position.set(side * 0.85, 7.0, 0); g.add(bulb);
+  const pl = new THREE.PointLight(0xffcc77, 1.0, 16);
+  pl.position.set(side * 0.85, 7.0, 0); g.add(pl);
+  g.position.set(side * (ROAD_W / 2 + 0.7), 0, zPos);
+  envGrp.add(g); envObjs.push({ g, zBase: zPos });
+}
+
+function seedEnv() {
+  const SPAN = 180;
+  for (let z = 0; z > -SPAN; z -= 5.5) {
+    const r = Math.random();
+    if (r < 0.45) { makeTree(-1, z); if (Math.random() > 0.3) makeTree(1, z - Math.random() * 3); }
+    else if (r < 0.72) { makeBuilding(-1, z); if (Math.random() > 0.4) makeBuilding(1, z - 2); }
+    if (Math.abs(z % 16) < 2) { makeStreetlight(-1, z); makeStreetlight(1, z); }
+  }
+}
+seedEnv();
+
+// ═══════════════════════════════════════════════════════
+//  BIKE FAIRING — POV (matches images 4 & 5)
+// ═══════════════════════════════════════════════════════
+const fairGrp = new THREE.Group();
+camera.add(fairGrp);
+
+// Main fairing
+const fBlack = new THREE.MeshLambertMaterial({ color: 0x0d0d0d });
+const fDark  = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
+// Wide fairing body
+const fb = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.32, 0.28), fBlack);
+fb.position.set(0, -0.9, -1.08); fb.rotation.x = 0.22; fairGrp.add(fb);
+// Upper fairing taper
+const ft = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.22, 0.2), fBlack);
+ft.position.set(0, -0.7, -1.06); ft.rotation.x = 0.15; fairGrp.add(ft);
+// Windscreen
+const wsMat = new THREE.MeshLambertMaterial({ color: 0x1a2a3a, transparent: true, opacity: 0.38 });
+const wsc = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.38, 0.03), wsMat);
+wsc.position.set(0, -0.55, -1.05); wsc.rotation.x = -0.12; fairGrp.add(wsc);
+// Dash cluster
+const dashM = new THREE.MeshLambertMaterial({ color: 0x001122, emissive: 0x002244, emissiveIntensity: 0.7 });
+const dash = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.2, 0.06), dashM);
+dash.position.set(0, -0.76, -1.04); fairGrp.add(dash);
+// Handlebar
+const hbM = new THREE.MeshLambertMaterial({ color: 0x151515 });
+const hbar = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 1.12, 8), hbM);
+hbar.rotation.z = Math.PI / 2; hbar.position.set(0, -0.76, -1.17); fairGrp.add(hbar);
+// Grips + levers
+[-1, 1].forEach(s => {
+  const gr = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.22, 8), fDark);
+  gr.rotation.z = Math.PI / 2; gr.position.set(s * 0.57, -0.76, -1.18); fairGrp.add(gr);
+  const lv = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.013, 0.19),
+    new THREE.MeshLambertMaterial({ color: 0x888888 }));
+  lv.position.set(s * 0.49, -0.795, -1.26); lv.rotation.y = s * 0.18; fairGrp.add(lv);
+});
+// Mirrors — big wing mirrors like images 4 & 5
+[-1, 1].forEach(s => {
+  const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.28, 6), fDark);
+  stalk.rotation.z = s * 0.38; stalk.position.set(s * 0.63, -0.63, -1.13); fairGrp.add(stalk);
+  const mHead = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.13, 0.05), fBlack);
+  mHead.position.set(s * 0.74, -0.57, -1.11); fairGrp.add(mHead);
+  const mGlass = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.01),
+    new THREE.MeshLambertMaterial({ color: 0x223344, emissive: 0x112233, emissiveIntensity: 0.4 }));
+  mGlass.position.set(s * 0.74, -0.57, -1.085); fairGrp.add(mGlass);
+  // Reflect tint
+  const tint = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.09),
+    new THREE.MeshLambertMaterial({ color: 0x334455, transparent: true, opacity: 0.5 }));
+  tint.position.set(s * 0.74, -0.57, -1.083); fairGrp.add(tint);
+});
+// Indicator lights
+[[-0.15, 0.006], [0.15, 0.006]].forEach(([x, ei]) => {
+  const ind = new THREE.Mesh(new THREE.SphereGeometry(0.013, 5, 5),
+    new THREE.MeshLambertMaterial({ color: 0x00ffbb, emissive: 0x00ffbb, emissiveIntensity: 1 }));
+  ind.position.set(x, -0.7, -1.02); fairGrp.add(ind);
+});
+
+// ═══════════════════════════════════════════════════════
+//  TRAFFIC VEHICLES — DENSE, BUMPER TO BUMPER
+// ═══════════════════════════════════════════════════════
+const traffic = [];
+let spawnCount = 0;
+
+// 5 lanes — tight
+const LANES = [-ROAD_W / 2 + 1.0, -ROAD_W / 6, 0, ROAD_W / 6, ROAD_W / 2 - 1.0];
+
+// ── CAR / SUV ──
+function makeCar() {
+  const g = new THREE.Group();
+  const isUV = Math.random() > 0.5;
+  const carCols = [0xdddddd, 0xffffff, 0xbbbbbb, 0xcccccc, 0xeeeeee, 0xaaaaaa, 0xcc1111, 0x223399, 0x224422, 0x886622, 0xddcc99];
+  const col = carCols[Math.floor(Math.random() * carCols.length)];
+  const bm = new THREE.MeshLambertMaterial({ color: col });
+  const h = isUV ? 1.7 : 1.35, wid = isUV ? 2.1 : 1.85, len = isUV ? 4.4 : 4.1;
+  // Body
+  const body = new THREE.Mesh(new THREE.BoxGeometry(wid, h, len), bm);
+  body.position.y = h / 2 + 0.3; g.add(body);
+  // Cabin taper for sedans
+  if (!isUV) {
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(wid - 0.15, h * 0.58, len * 0.52), bm);
+    cab.position.y = h + 0.3 * 0.6; g.add(cab);
+  }
+  // Windows
+  const wmG = new THREE.MeshLambertMaterial({ color: 0x99ccee, transparent: true, opacity: 0.5 });
+  const fw = new THREE.Mesh(new THREE.BoxGeometry(wid - 0.1, 0.6, 0.04), wmG);
+  fw.position.set(0, h * 0.6 + 0.3, -len / 2 - 0.01); g.add(fw);
+  [-1, 1].forEach(s => {
+    const sw = new THREE.Mesh(new THREE.BoxGeometry(0.04, h * 0.5, len * 0.44), wmG);
+    sw.position.set(s * (wid / 2 + 0.01), h * 0.55 + 0.3, 0); g.add(sw);
+  });
+  // Brake lights (red)
+  const blM = new THREE.MeshLambertMaterial({ color: 0xff1100, emissive: 0xcc0000, emissiveIntensity: 0.6 });
+  [-wid / 3, wid / 3].forEach(x => {
+    const bl = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.16, 0.03), blM);
+    bl.position.set(x, h * 0.45 + 0.3, len / 2 + 0.01); g.add(bl);
+  });
+  // Number plate hint
+  const np = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.02),
+    new THREE.MeshLambertMaterial({ color: 0xffffff }));
+  np.position.set(0, 0.28, len / 2 + 0.01); g.add(np);
+  // Wheels
+  const wkM = new THREE.MeshLambertMaterial({ color: 0x111111 });
+  const rimM = new THREE.MeshLambertMaterial({ color: 0x999aaa });
+  [[wid/2, 0.3, -len*0.32], [wid/2, 0.3, len*0.32], [-wid/2, 0.3, -len*0.32], [-wid/2, 0.3, len*0.32]].forEach(([wx, wy, wz]) => {
+    const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.22, 10), wkM);
+    wh.rotation.z = Math.PI / 2; wh.position.set(wx, wy, wz); g.add(wh);
+    const ri = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.24, 8), rimM);
+    ri.rotation.z = Math.PI / 2; ri.position.set(wx, wy, wz); g.add(ri);
+  });
+  return g;
+}
+
+// ── AUTO RICKSHAW ──
+function makeAuto() {
+  const g = new THREE.Group();
+  // Bengaluru autos: yellow body, green or black top
+  const topCols = [0x1a7a22, 0x1a6022, 0x111111];
+  const topCol = topCols[Math.floor(Math.random() * topCols.length)];
+  const bm = new THREE.MeshLambertMaterial({ color: 0xffcc00 });
+  const tm = new THREE.MeshLambertMaterial({ color: topCol });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.55, 1.05, 2.4), bm);
+  body.position.y = 0.53; g.add(body);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.57, 0.5, 2.42), tm);
+  roof.position.y = 1.28; g.add(roof);
+  // Windshield
+  const ws2M = new THREE.MeshLambertMaterial({ color: 0x88ccff, transparent: true, opacity: 0.55 });
+  const ws2 = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.58, 0.05), ws2M);
+  ws2.position.set(0, 0.92, -1.22); g.add(ws2);
+  // Open sides — vertical bars
+  [-1, 1].forEach(s => {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.8, 0.05), tm);
+    bar.position.set(s * 0.78, 0.85, -1.1); g.add(bar);
+  });
+  // Green stripe
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.2, 2.42),
+    new THREE.MeshLambertMaterial({ color: 0x1a7a22 }));
+  stripe.position.y = 0.5; g.add(stripe);
+  // Passengers hint
+  const pax = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.5, 0.6),
+    new THREE.MeshLambertMaterial({ color: 0x443322 }));
+  pax.position.set(0, 0.8, 0.6); g.add(pax);
+  // Wheels
+  const wkM = new THREE.MeshLambertMaterial({ color: 0x111111 });
+  [[0.62, 0.28, -0.9], [-0.62, 0.28, -0.9], [0, 0.28, 1.0]].forEach(([wx, wy, wz]) => {
+    const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.17, 9), wkM);
+    wh.rotation.z = Math.PI / 2; wh.position.set(wx, wy, wz); g.add(wh);
+  });
+  return g;
+}
+
+// ── MOTORBIKE with rider ──
+function makeMoto() {
+  const g = new THREE.Group();
+  const bodyCol = [0x2244aa, 0xaa2222, 0x111111, 0xaaaaaa, 0x226622, 0xcc6600, 0x882288][Math.floor(Math.random() * 7)];
+  const bm = new THREE.MeshLambertMaterial({ color: bodyCol });
+  const blk = new THREE.MeshLambertMaterial({ color: 0x0d0d0d });
+  // Body
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.52, 1.85), bm);
+  body.position.y = 0.56; g.add(body);
+  // Tank
+  const tank = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.3, 0.7), bm);
+  tank.position.set(0, 0.85, -0.3); g.add(tank);
+  // Fork
+  const fork = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.72, 6), blk);
+  fork.rotation.x = 0.28; fork.position.set(0, 0.42, -1.05); g.add(fork);
+  // Handlebar
+  const hb = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.58, 6), blk);
+  hb.rotation.z = Math.PI / 2; hb.position.set(0, 0.8, -0.98); g.add(hb);
+  // Wheels
+  [[0, 0.31, -1.05], [0, 0.31, 0.88]].forEach(([wx, wy, wz]) => {
+    const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.31, 0.13, 10), blk);
+    wh.rotation.z = Math.PI / 2; wh.position.set(wx, wy, wz); g.add(wh);
+  });
+  // Rider
+  const ridM = new THREE.MeshLambertMaterial({ color: [0x443322, 0x223344, 0x334422, 0x222222][Math.floor(Math.random() * 4)] });
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.6, 0.52), ridM);
+  torso.position.set(0, 1.18, 0.1); g.add(torso);
+  // Helmet
+  const helmCol = [0x111111, 0x222266, 0x662222, 0x333333, 0xaaaaaa][Math.floor(Math.random() * 5)];
+  const helm = new THREE.Mesh(new THREE.SphereGeometry(0.24, 7, 6),
+    new THREE.MeshLambertMaterial({ color: helmCol }));
+  helm.position.set(0, 1.65, 0.0); g.add(helm);
+  // Bag on back (delivery / commuter)
+  if (Math.random() > 0.5) {
+    const bagCol = Math.random() > 0.5 ? 0xcc3300 : 0x333333; // Zomato red or generic
+    const bag = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.55, 0.35),
+      new THREE.MeshLambertMaterial({ color: bagCol }));
+    bag.position.set(0, 1.2, 0.5); g.add(bag);
+  }
+  return g;
+}
+
+// ── BMTC BUS ──
+function makeBus() {
+  const g = new THREE.Group();
+  const stripeCols = [0x1a5c8a, 0x1a8a3c, 0xaa2200, 0x886600];
+  const sc3 = stripeCols[Math.floor(Math.random() * stripeCols.length)];
+  const wBodyM = new THREE.MeshLambertMaterial({ color: 0xe8e8d8 });
+  const stripeM = new THREE.MeshLambertMaterial({ color: sc3 });
+  // Body
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.9, 3.4, 9.5), wBodyM);
+  body.position.y = 1.7; g.add(body);
+  // Colour band
+  const band = new THREE.Mesh(new THREE.BoxGeometry(2.92, 1.1, 9.52), stripeM);
+  band.position.y = 2.6; g.add(band);
+  // Front face
+  const front = new THREE.Mesh(new THREE.BoxGeometry(2.7, 3.0, 0.05), stripeM);
+  front.position.set(0, 1.7, -4.78); g.add(front);
+  // Windows
+  const wmG = new THREE.MeshLambertMaterial({ color: 0xaaddff, transparent: true, opacity: 0.4 });
+  for (let i = 0; i < 6; i++) {
+    [-1.46, 1.46].forEach(x => {
+      const wn = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.7, 1.1), wmG);
+      wn.position.set(x, 3.1, -3.5 + i * 1.55); g.add(wn);
+    });
+  }
+  const fw2 = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.2, 0.05), wmG);
+  fw2.position.set(0, 2.4, -4.8); g.add(fw2);
+  // Wheels
+  const wkM = new THREE.MeshLambertMaterial({ color: 0x111111 });
+  [[1.45, 0.44, -3.6], [-1.45, 0.44, -3.6], [1.45, 0.44, 3.6], [-1.45, 0.44, 3.6]].forEach(([wx, wy, wz]) => {
+    const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.28, 10), wkM);
+    wh.rotation.z = Math.PI / 2; wh.position.set(wx, wy, wz); g.add(wh);
+  });
+  return g;
+}
+
+// ── METRO PILLAR ──
+function makeMetroPillar() {
+  const g = new THREE.Group();
+  const cm = new THREE.MeshLambertMaterial({ color: 0x8899aa });
+  const col2 = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.9, 18, 8), cm);
+  col2.position.y = 9; g.add(col2);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 0.72, 1.5, 8), cm);
+  cap.position.y = 18.75; g.add(cap);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.65, 2.5), cm);
+  base.position.y = 0.32; g.add(base);
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(5.5, 0.8, 2.0),
+    new THREE.MeshLambertMaterial({ color: 0x9999bb }));
+  beam.position.y = 19.9; g.add(beam);
+  return g;
+}
+
+// ── SPAWN ──
+function spawnVehicle(zPos, forceLane) {
+  spawnCount++;
+  let mesh, type, hitW;
+
+  if (spawnCount % 16 === 0) {
+    mesh = makeMetroPillar(); type = 'pillar'; hitW = 1.05;
+    const li = Math.floor(Math.random() * 3) + 1;
+    mesh.position.set(LANES[li], 0, zPos);
+    scene.add(mesh);
+    traffic.push({ mesh, type, li, hitW, baseSpeed: 0, laneX: LANES[li] });
+    return;
+  }
+
+  const roll = Math.random();
+  if      (roll < 0.28) { mesh = makeCar();  type = 'car';  hitW = 1.15; }
+  else if (roll < 0.50) { mesh = makeAuto(); type = 'auto'; hitW = 0.9;  }
+  else if (roll < 0.72) { mesh = makeMoto(); type = 'moto'; hitW = 0.42; }
+  else                  { mesh = makeBus();  type = 'bus';  hitW = 1.55; }
+
+  const li = forceLane !== undefined ? forceLane : Math.floor(Math.random() * LANES.length);
+  const laneX = LANES[li];
+  mesh.position.set(laneX, 0, zPos);
+  scene.add(mesh);
+
+  // All vehicles have a "base crawl speed" — very slow, matching gridlock
+  // Their speed in world units matches the gap-pulse traffic flow
+  const baseSpeed = type === 'bus' ? 1.5 + Math.random() * 1.5 : 2 + Math.random() * 3;
+  traffic.push({ mesh, type, li, laneX, hitW, baseSpeed,
+    swT: 3 + Math.random() * 5, tgtX: laneX });
+}
+
+// Initial dense pack — fill road from z=-4 to z=-70, every 4-5 units
+function fillInitialTraffic() {
+  // Fill each lane separately with bumper-to-bumper vehicles
+  LANES.forEach((lx, li) => {
+    let z = -1;
+    while (z > -45) {
+      const type_roll = Math.random();
+      let gap;
+      if (type_roll < 0.28) { gap = 4.8; }       // car
+      else if (type_roll < 0.5) { gap = 3.0; }   // auto
+      else if (type_roll < 0.72) { gap = 2.2; }  // moto
+      else { gap = 10.5; }                         // bus
+      spawnVehicle(z, li);
+      z -= gap - 0.3; // tight bumper gap
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  SPEEDO
+// ═══════════════════════════════════════════════════════
+const sc2 = document.getElementById('sc');
+const sctx = sc2.getContext('2d');
+function drawSpeedo(s) {
+  const w = sc2.width, h = sc2.height;
+  sctx.clearRect(0, 0, w, h);
+  sctx.beginPath(); sctx.arc(w / 2, h, h - 5, Math.PI, 0);
+  sctx.strokeStyle = 'rgba(255,150,0,.15)'; sctx.lineWidth = 7; sctx.stroke();
+  sctx.beginPath(); sctx.arc(w / 2, h, h - 5, Math.PI, Math.PI + (s / 60) * Math.PI);
+  const gr = sctx.createLinearGradient(0, 0, w, 0);
+  gr.addColorStop(0, '#00ff88'); gr.addColorStop(0.6, '#ffcc00'); gr.addColorStop(1, '#ff2200');
+  sctx.strokeStyle = gr; sctx.lineWidth = 7; sctx.stroke();
+  sctx.fillStyle = 'rgba(255,150,0,.85)'; sctx.font = 'bold 10px Courier New';
+  sctx.textAlign = 'center'; sctx.fillText(Math.round(s), w / 2, h - 2);
+}
+
+// ═══════════════════════════════════════════════════════
+//  COLLISION
+// ═══════════════════════════════════════════════════════
+const BIKE_HIT = 0.36;
+function checkCol() {
+  for (const t of traffic) {
+    const dz = t.mesh.position.z;
+    if (dz > 1.2 || dz < -7) continue;
+    if (Math.abs(t.mesh.position.x - bikeXS) < t.hitW + BIKE_HIT) {
+      triggerCrash(); return;
+    }
+  }
+}
+function triggerCrash() {
+  if (crashCD > 0) return;
+  crashCD = 2.5; shakeT = 0.8;
+  const el = document.getElementById('msg');
+  el.style.color = '#ffffff';
+  el.style.textShadow = '0 0 20px #ff3300, 0 0 50px #ff0000';
+  el.textContent = 'Careful Magga 🤙';
+  el.style.opacity = '1';
+  setTimeout(() => el.style.opacity = '0', 1400);
+  speed = 0; // full stop on crash
+}
+
+// ═══════════════════════════════════════════════════════
+//  START
+// ═══════════════════════════════════════════════════════
+function startGame() {
+  document.getElementById('start').style.display = 'none';
+  gameActive = true; distance = 0; speed = 0; bikeX = 0; bikeXS = 0;
+  chaos = 0; roadOffset = 0; gapTimer = GAP_INTERVAL; gapOpen = false;
+  fillInitialTraffic();
+}
+
+// ═══════════════════════════════════════════════════════
+//  GAME LOOP
+// ═══════════════════════════════════════════════════════
+let prev = performance.now();
+
+// Gap flash UI
+const gapFlashEl = document.getElementById('gap-flash');
+
+function loop() {
+  requestAnimationFrame(loop);
+  const now = performance.now(), dt = Math.min((now - prev) / 1000, 0.1);
+  prev = now;
+
+  if (!gameActive) { renderer.render(scene, camera); return; }
+
+  // ════ GAP SYSTEM ════
+  if (!gapOpen) {
+    gapTimer -= dt;
+    // Update gap bar — shows time UNTIL next gap
+    const pct = Math.max(0, 1 - gapTimer / GAP_INTERVAL);
+    document.getElementById('gap-bar').style.width = (pct * 100) + '%';
+    document.getElementById('gap-status').textContent = 'Gap in ' + Math.max(0, gapTimer).toFixed(1) + 's...';
+    document.getElementById('gap-bar').style.background = 'linear-gradient(90deg,#666,#999)';
+
+    if (gapTimer <= 0) {
+      gapOpen = true;
+      gapOpenTimer = GAP_DURATION;
+      // Flash the GO message
+      gapFlashEl.style.opacity = '1';
+      setTimeout(() => gapFlashEl.style.opacity = '0', 600);
+    }
+    // Force speed to 0 — traffic wall is right in front
+    speed = Math.max(0, speed - BRAKE_DECEL * dt);
+  } else {
+    // GAP IS OPEN
+    gapOpenTimer -= dt;
+    const pct = gapOpenTimer / GAP_DURATION;
+    document.getElementById('gap-bar').style.width = (pct * 100) + '%';
+    document.getElementById('gap-bar').style.background = 'linear-gradient(90deg,#00cc88,#00ffaa)';
+    document.getElementById('gap-status').textContent = pct > 0.5 ? '🟢 GAP OPEN! GO GO GO!' : '⚠️ Closing...';
+
+    if (gapOpenTimer <= 0) {
+      gapOpen = false;
+      gapTimer = (GAP_INTERVAL - chaos * 1.5) + (Math.random() * 2 - 1); // slightly random
+      gapTimer = Math.max(3.0, gapTimer);
+      speed = 0;
+    }
+  }
+
+  // ════ INPUT ════
+  if (gapOpen) {
+    // Can inch forward during gap
+    if (keys['ArrowUp']) speed = Math.min(MAX_INCH_SPD, speed+ INCH_ACCEL * dt);
+    else speed = Math.max(0, speed - BRAKE_DECEL * dt);
+  } else {
+    // Stuck in traffic — no forward movement
+    speed = Math.max(0, speed - BRAKE_DECEL * dt);
+  }
+
+  // Lateral — always possible (weaving in stopped traffic)
+  const latSpd = SHIFT_SPD + speed * 0.05;
+  if (keys['ArrowLeft'])  bikeX = Math.max(-ROAD_HALF + 0.3, bikeX - latSpd * dt);
+  if (keys['ArrowRight']) bikeX = Math.min(ROAD_HALF - 0.3,  bikeX + latSpd * dt);
+  bikeXS += (bikeX - bikeXS) * 10 * dt;
+
+  // ════ PROGRESS ════
+  const ms = speed / 3.6;
+  const dd = ms * dt;
+  distance += dd; roadOffset += dd;
+  chaos = Math.min(1, distance / 5000);
+  if (crashCD > 0) crashCD -= dt;
+  if (honkCD > 0) honkCD -= dt;
+// Milestone messages
+const milestones = [
+  { dist: 100, msg: "🎉 Wow! You've driven 100m!\nYour patience level is suitable\nfor Bengaluru traffic! 🏍️" },
+  { dist: 200, msg: "💪 200m DONE!\nYou're a true Bengaluru rider!\nMacha, you're unstoppable! 🔥" },
+  { dist: 1000, msg: "🏆 1 KILOMETERS!\nYou've mastered the chaos!\nNamma Bengaluru salutes you! 🙏" },
+  { dist: 2000, msg: "👑 2 KM LEGEND!\nYou ARE the traffic now!\nRespect, boss! 💯" }
+];
+
+// Check milestones (add a flag to track shown milestones)
+if (!window.milestonesShown) window.milestonesShown = {};
+milestones.forEach(m => {
+  if (distance >= m.dist && !window.milestonesShown[m.dist]) {
+    window.milestonesShown[m.dist] = true;
+    const el = document.getElementById('milestone');
+    el.textContent = m.msg;
+    el.style.opacity = '1';
+    setTimeout(() => el.style.opacity = '0', 4000); // Show for 4 seconds
+  }
+});
+
+  // ════ ROAD TILES ════
+  roadGrp.position.z = roadOffset;
+  for (const t of tiles) {
+    const wz = t.zBase + roadOffset;
+    if (wz > 4) {
+      t.zBase -= NTILES * TILE_L;
+      
+      buildTileContent(t.g, t.zBase);
+    }
+  }
+
+  // ════ ENVIRONMENT ════
+  envGrp.position.z = roadOffset;
+  for (const e of envObjs) {
+    const wz = e.zBase + roadOffset;
+    if (wz > 12) e.zBase -= 200;
+  }
+
+  // ════ TRAFFIC MOVEMENT ════
+  // During GAP: traffic ahead inches forward slowly (they all creep)
+  // During stop: traffic is nearly stationary or creeps VERY slowly
+  const trafficCreepSpeed = gapOpen ? (3.5 + Math.random() * 0.5) : 0.4; // m/s world units ahead
+
+  for (let i = traffic.length - 1; i >= 0; i--) {
+    const t = traffic[i];
+
+    // Vehicles ahead (negative z) move forward at trafficCreepSpeed
+    // Player moves at ms — relative motion
+    const relV = ms - (t.type === 'pillar' ? 0 : trafficCreepSpeed * (0.6 + Math.random() * 0.3));
+    t.mesh.position.z += relV * dt;
+
+    // Autos & bikes weave lanes occasionally even in traffic
+    if (t.type === 'auto' || t.type === 'moto') {
+      t.swT -= dt;
+      if (t.swT <= 0) {
+        const ni = Math.floor(Math.random() * LANES.length);
+        t.tgtX = LANES[ni];
+        t.swT = 2 + Math.random() * 4;
+      }
+      // Slow lateral drift — they inch sideways in traffic
+      t.mesh.position.x += (t.tgtX - t.mesh.position.x) * 1.8 * dt;
+    }
+
+    // Despawn behind camera
+    if (t.mesh.position.z > 8) {
+      scene.remove(t.mesh);
+      traffic.splice(i, 1);
+    }
+  }
+
+  // ════ RESPAWN — keep road PACKED ahead ════
+  const TARGET_DENSITY = 60 + Math.floor(chaos * 20);
+  LANES.forEach((lx, li) => {
+    let furthest = -8;
+    for (const t of traffic) {
+      if (Math.abs(t.mesh.position.x - lx) < 0.8 && t.mesh.position.z < furthest) {
+        furthest = t.mesh.position.z;
+      }
+    }
+    let safetyCount = 0;
+    while (furthest > -TARGET_DENSITY && safetyCount < 30) {
+      safetyCount++;
+      const gap = t_gap_for_lane(li);
+      const spawnZ = furthest - gap;
+      if (spawnZ < -TARGET_DENSITY - 5) break;
+      spawnVehicle(spawnZ, li);
+      furthest = spawnZ;
+    }
+  });
+
+  // ════ COLLISION ════
+  checkCol();
+
+  // ════ CAMERA ════
+  const shake = shakeT > 0 ? Math.sin(now * 0.065) * 0.08 * (shakeT / 0.8) : 0;
+  if (shakeT > 0) shakeT -= dt;
+  camera.position.x = bikeXS + shake;
+  camera.position.y = 1.38 + Math.abs(shake) * 0.22;
+  camera.position.z = 0;
+  camera.rotation.set(0, 0, 0);
+  const bob = Math.sin(roadOffset * 4) * 0.004 * (speed / MAX_INCH_SPD);
+  camera.lookAt(bikeXS + shake * 0.35, 1.08 + bob + shake * 0.12, -12);
+
+  // Fairing tilt
+  const tf = bikeX / ROAD_HALF;
+  fairGrp.rotation.z = -tf * 0.16;
+  fairGrp.rotation.y = tf * 0.06;
+  fairGrp.position.y = bob * 0.5;
+
+  // ════ UI ════
+  document.getElementById('sv').textContent = Math.round(speed) + (gapOpen ? ' 🟢' : ' 🔴');
+  document.getElementById('dv').textContent = distance < 1000
+    ? Math.round(distance) + ' m'
+    : (distance / 1000).toFixed(2) + ' km';
+  document.getElementById('chaos-fill').style.width = (chaos * 100) + '%';
+  drawSpeedo(speed);
+
+  renderer.render(scene, camera);
+}
+
+// Helper: gap between vehicles per lane type
+function t_gap_for_lane(li) {
+  // Center lanes have more cars/buses, outer lanes more motos/autos
+  const r = Math.random();
+  if (li === 0 || li === 4) return r < 0.6 ? 2.4 : 4.8;   // outer — mostly motos
+  if (li === 2)             return r < 0.4 ? 10.5 : 4.5;   // center — buses/cars
+  return r < 0.35 ? 10.2 : r < 0.65 ? 4.6 : 2.6;           // mixed
+}
+
+loop();
+</script>
+</body>
+</html>
